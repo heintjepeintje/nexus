@@ -1,0 +1,33 @@
+{
+	"configurations": [
+		{
+			"name": "Launch (Debug)",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/bin/out/debug/${workspaceFolderBasename}.exe",
+			"args": [ ],
+			"stopAtEntry": false,
+			"preLaunchTask": "Compile (Debug)",
+			"cwd": "${workspaceFolder}",
+			"environment": [],
+			"externalConsole": true,
+			"MIMode": "gdb",
+			"miDebuggerPath": "C:\\Program Files\\MinGW64\\bin\\gdb.exe",
+			"logging": {
+				"engineLogging": true
+			}
+		},
+		{
+			"name": "Launch (Release)",
+			"type": "cppvsdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/bin/out/release/${workspaceFolderBasename}.exe",
+			"args": [],
+			"stopAtEntry": false,
+			"preLaunchTask": "Compile (Release)",
+			"cwd": "${workspaceFolder}",
+			"environment": [],
+			"console": "externalTerminal"
+		},
+	]
+}

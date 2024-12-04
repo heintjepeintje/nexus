@@ -1,0 +1,5 @@
+Makefile
+*.make
+bin/int/debug/*
+bin/out/debug/*
+.vscode/settings.json
