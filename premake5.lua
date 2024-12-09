@@ -4,17 +4,26 @@ workspace ""
 
 project "nexus"
 	kind "ConsoleApp"
-	language "C++"
+	language "C"
 
 	objdir "bin/int/%{cfg.buildcfg}"
 	targetdir "bin/out/%{cfg.buildcfg}"
 
 	files {
-		"src/**.cpp"
+		"src/**.c"
 	}
 
 	includedirs {
+		os.getenv("VK_SDK_PATH") .. "/Include",
 		"src"
+	}
+
+	libdirs {
+		os.getenv("VK_SDK_PATH") .. "/Lib",
+	}
+
+	links {
+		"vulkan-1"
 	}
 
 	filter "configurations:debug"

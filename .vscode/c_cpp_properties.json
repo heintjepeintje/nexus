@@ -6,9 +6,12 @@
 			"browse": {
 				"path": [ "src" ]
 			},
-			"cppStandard": "c++20",
+			"cStandard": "c17",
 			"defines": [ "_DEBUG" ],
-			"includePath": [ "src" ],
+			"includePath": [
+				"src",
+				"${env:VK_SDK_PATH}/Include"
+			],
 			"intelliSenseMode": "gcc-x64"
 		},
 		{
@@ -18,7 +21,11 @@
 			},
 			"cppStandard": "c++20",
 			"defines": [ "NDEBUG" ],
-			"includePath": [ "src" ],
+			"includePath": [
+				"src",
+				"${env:VK_SDK_PATH}/Include"
+			],
+			"cStandard": "c17",
 			"intelliSenseMode": "gcc-x64"
 		}
 	]
