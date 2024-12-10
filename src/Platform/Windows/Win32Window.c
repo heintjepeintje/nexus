@@ -93,7 +93,7 @@ nxWindow nxCreateWindow(const char *title, uint32_t width, uint32_t height) {
 		NULL, NULL, NULL, NULL
 	);
 
-	NX_ASSERT(gWindows[window].hwnd != NULL)
+	NX_ASSERT(gWindows[window].hwnd != NULL);
 
 	SetWindowLongA(gWindows[window].hwnd, GWLP_USERDATA, window);
 

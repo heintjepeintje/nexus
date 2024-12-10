@@ -89,6 +89,9 @@ typedef struct {
 	uint32_t imageCount;
 	VkImage *images;
 
+	VkSemaphore semaphore;
+	uint32_t nextImageIndex;
+
 	uint8_t used;
 } vulkanSwapChain;
 
@@ -147,6 +150,20 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL onDebugMessage(VkDebugUtilsMessageSeverity
 		default: break;
 	}
 	return VK_FALSE;
+}
+
+nxImageLayout toNxImageLayout(VkImageLayout layout) {
+	switch (layout) {
+		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: return NX_IMAGE_LAYOUT_PRESENT;
+		default: return NX_IMAGE_LAYOUT_UNKNOWN;
+	}
+}
+
+VkImageLayout toVkImageLayout(nxImageLayout layout) {
+	switch (layout) {
+		case NX_IMAGE_LAYOUT_PRESENT: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		default: return VK_IMAGE_LAYOUT_UNDEFINED;
+	}
 }
 
 nxFormat toNxFormat(VkFormat format) {
@@ -401,11 +418,11 @@ void nxGetPhysicalDevices(nxGraphicsContext context, nxPhysicalDevice *devices) 
 }
 
 void nxDestroyGraphicsContext(nxGraphicsContext *context) {
-	PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(gGraphicsContexts[*context].instance, "vkDestroyDebugUtilsMessengerEXT");
-	vkDestroyDebugUtilsMessengerEXT(gGraphicsContexts[*context].instance, gGraphicsContexts[*context].debugMessenger, NULL);
+	PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(NX_VK_GRAPHICS_CONTEXT(*context).instance, "vkDestroyDebugUtilsMessengerEXT");
+	vkDestroyDebugUtilsMessengerEXT(NX_VK_GRAPHICS_CONTEXT(*context).instance, NX_VK_GRAPHICS_CONTEXT(*context).debugMessenger, NULL);
 
-	vkDestroyInstance(gGraphicsContexts[*context].instance, NULL);
-	memset(&gGraphicsContexts[*context], 0, sizeof(vulkanGraphicsContext));
+	vkDestroyInstance(NX_VK_GRAPHICS_CONTEXT(*context).instance, NULL);
+	memset(&NX_VK_GRAPHICS_CONTEXT(*context), 0, sizeof(vulkanGraphicsContext));
 	*context = NX_INVALID_HANDLE;
 }
 
@@ -468,7 +485,7 @@ void nxGetSupportedSurfaceFormats(nxPhysicalDevice device, nxSurface surface, nx
 }
 
 void nxDestroyPhysicalDevice(nxPhysicalDevice *device) {
-	memset(&gPhysicalDevices[*device], 0, sizeof(vulkanPhysicalDevice));
+	memset(&NX_VK_PHYSICAL_DEVICE(*device), 0, sizeof(vulkanPhysicalDevice));
 	*device = NX_INVALID_HANDLE;
 }
 
@@ -477,7 +494,7 @@ nxSurface nxCreateSurface(nxGraphicsContext context, nxWindow window) {
 	for (uint32_t i = 0; i < NX_MAX_SURFACES; i++) {
 		if (gSurfaces[i].used) continue;
 		gSurfaces[i].used = NX_TRUE;
-		surface = i;
+		surface = i + NX_SURFACE_OFFSET;
 		break;
 	}
 
@@ -489,15 +506,16 @@ nxSurface nxCreateSurface(nxGraphicsContext context, nxWindow window) {
 	surfaceInfo.hinstance = GetModuleHandle(NULL);
 	
 	NX_VKCALL(vkCreateWin32SurfaceKHR(NX_VK_GRAPHICS_CONTEXT(context).instance, &surfaceInfo, NULL, &NX_VK_SURFACE(surface).surface));
+	NX_VK_SURFACE(surface).context = context;
 #endif // _WIN32
 
 	return surface;
 }
 
 void nxDestroySurface(nxSurface *surface) {
-	nxGraphicsContext context = gSurfaces[*surface].context;
-	vkDestroySurfaceKHR(NX_VK_GRAPHICS_CONTEXT(context).instance, gSurfaces[*surface].surface, NULL);
-	memset(&gSurfaces[*surface], 0, sizeof(vulkanSurface));
+	nxGraphicsContext context = NX_VK_SURFACE(*surface).context;
+	vkDestroySurfaceKHR(NX_VK_GRAPHICS_CONTEXT(context).instance, NX_VK_SURFACE(*surface).surface, NULL);
+	memset(&NX_VK_SURFACE(*surface), 0, sizeof(vulkanSurface));
 	*surface = NX_INVALID_HANDLE;
 }
 
@@ -506,7 +524,7 @@ nxLogicalDevice nxCreateLogicalDevice(nxPhysicalDevice physicalDevice, nxSurface
 	for (uint32_t i = 0; i < NX_MAX_LOGICAL_DEVICES; i++) {
 		if (gLogicalDevices[i].used) continue;
 		gLogicalDevices[i].used = NX_TRUE;
-		logicalDevice = i;
+		logicalDevice = i + NX_LOGICAL_DEVIC_OFFSET;
 		break;
 	}
 
@@ -518,10 +536,10 @@ nxLogicalDevice nxCreateLogicalDevice(nxPhysicalDevice physicalDevice, nxSurface
 	NX_VK_LOGICAL_DEVICE(logicalDevice).transferQueueFamily = UINT32_MAX;
 
 	uint32_t queueFamilyCount = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(gPhysicalDevices[physicalDevice].device, &queueFamilyCount, NULL);
+	vkGetPhysicalDeviceQueueFamilyProperties(NX_VK_PHYSICAL_DEVICE(physicalDevice).device, &queueFamilyCount, NULL);
 
 	VkQueueFamilyProperties *queueFamilyProperties = (VkQueueFamilyProperties*)malloc(queueFamilyCount * sizeof(VkQueueFamilyProperties));
-	vkGetPhysicalDeviceQueueFamilyProperties(gPhysicalDevices[physicalDevice].device, &queueFamilyCount, queueFamilyProperties);
+	vkGetPhysicalDeviceQueueFamilyProperties(NX_VK_PHYSICAL_DEVICE(physicalDevice).device, &queueFamilyCount, queueFamilyProperties);
 
 	for (uint32_t i = 0; i < queueFamilyCount; i++) {
 		VkQueueFlags queueFlags = queueFamilyProperties[i].queueFlags;
@@ -532,7 +550,7 @@ nxLogicalDevice nxCreateLogicalDevice(nxPhysicalDevice physicalDevice, nxSurface
 		}
 
 		VkBool32 canPresent = VK_FALSE;
-		NX_VKCALL(vkGetPhysicalDeviceSurfaceSupportKHR(gPhysicalDevices[physicalDevice].device, i, NX_VK_SURFACE(surface).surface, &canPresent));
+		NX_VKCALL(vkGetPhysicalDeviceSurfaceSupportKHR(NX_VK_PHYSICAL_DEVICE(physicalDevice).device, i, NX_VK_SURFACE(surface).surface, &canPresent));
 		if (canPresent && NX_VK_LOGICAL_DEVICE(logicalDevice).presentQueueFamily == UINT32_MAX) {
 			NX_VK_LOGICAL_DEVICE(logicalDevice).presentQueueFamily = i;
 		}
@@ -550,10 +568,10 @@ nxLogicalDevice nxCreateLogicalDevice(nxPhysicalDevice physicalDevice, nxSurface
 	}	
 
 	uint32_t availableDeviceExtensionCount = 0;
-	NX_VKCALL(vkEnumerateDeviceExtensionProperties(gPhysicalDevices[physicalDevice].device, NULL, &availableDeviceExtensionCount, NULL));
+	NX_VKCALL(vkEnumerateDeviceExtensionProperties(NX_VK_PHYSICAL_DEVICE(physicalDevice).device, NULL, &availableDeviceExtensionCount, NULL));
 
 	VkExtensionProperties *availableDeviceExtensions = (VkExtensionProperties*)malloc(availableDeviceExtensionCount * sizeof(VkExtensionProperties));
-	NX_VKCALL(vkEnumerateDeviceExtensionProperties(gPhysicalDevices[physicalDevice].device, NULL, &availableDeviceExtensionCount, availableDeviceExtensions));
+	NX_VKCALL(vkEnumerateDeviceExtensionProperties(NX_VK_PHYSICAL_DEVICE(physicalDevice).device, NULL, &availableDeviceExtensionCount, availableDeviceExtensions));
 
 	const char *requiredDeviceExtensions[NX_REQUIRED_DEVICE_EXTENSION_COUNT] = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -605,7 +623,7 @@ nxLogicalDevice nxCreateLogicalDevice(nxPhysicalDevice physicalDevice, nxSurface
 	deviceCreateInfo.enabledExtensionCount = NX_REQUIRED_DEVICE_EXTENSION_COUNT;
 	deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtensions;
 
-	NX_VKCALL(vkCreateDevice(gPhysicalDevices[physicalDevice].device, &deviceCreateInfo, NULL, &NX_VK_LOGICAL_DEVICE(logicalDevice).device));
+	NX_VKCALL(vkCreateDevice(NX_VK_PHYSICAL_DEVICE(physicalDevice).device, &deviceCreateInfo, NULL, &NX_VK_LOGICAL_DEVICE(logicalDevice).device));
 
 	vkGetDeviceQueue(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_LOGICAL_DEVICE(logicalDevice).graphicsQueueFamily, 0, &NX_VK_LOGICAL_DEVICE(logicalDevice).graphicsQueue);
 	vkGetDeviceQueue(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_LOGICAL_DEVICE(logicalDevice).presentQueueFamily, 0, &NX_VK_LOGICAL_DEVICE(logicalDevice).presentQueue);
@@ -618,14 +636,14 @@ nxLogicalDevice nxCreateLogicalDevice(nxPhysicalDevice physicalDevice, nxSurface
 }
 
 void nxDestroyLogicalDevice(nxLogicalDevice *device) {
-	NX_VKCALL(vkQueueWaitIdle(gLogicalDevices[*device].graphicsQueue));
-	NX_VKCALL(vkQueueWaitIdle(gLogicalDevices[*device].presentQueue));
-	NX_VKCALL(vkQueueWaitIdle(gLogicalDevices[*device].transferQueue));
+	NX_VKCALL(vkQueueWaitIdle(NX_VK_LOGICAL_DEVICE(*device).graphicsQueue));
+	NX_VKCALL(vkQueueWaitIdle(NX_VK_LOGICAL_DEVICE(*device).presentQueue));
+	NX_VKCALL(vkQueueWaitIdle(NX_VK_LOGICAL_DEVICE(*device).transferQueue));
 
-	NX_VKCALL(vkDeviceWaitIdle(gLogicalDevices[*device].device));
+	NX_VKCALL(vkDeviceWaitIdle(NX_VK_LOGICAL_DEVICE(*device).device));
 
-	vkDestroyDevice(gLogicalDevices[*device].device, NULL);
-	memset(&gLogicalDevices[*device], 0, sizeof(vulkanLogicalDevice));
+	vkDestroyDevice(NX_VK_LOGICAL_DEVICE(*device).device, NULL);
+	memset(&NX_VK_LOGICAL_DEVICE(*device), 0, sizeof(vulkanLogicalDevice));
 	*device = NX_INVALID_HANDLE;
 }
 
@@ -635,7 +653,8 @@ nxSwapChain nxCreateSwapChain(nxLogicalDevice device, nxSurface surface, nxForma
 	for (uint32_t i = 0; i < NX_MAX_SWAP_CHAINS; i++) {
 		if (gSwapChains[i].used) continue;
 		gSwapChains[i].used = NX_FALSE;
-		swapChain = i;
+		swapChain = i + NX_SWAP_CHAIN_OFFSET;
+		break;
 	}
 
 	NX_ASSERT(swapChain != NX_INVALID_HANDLE);
@@ -678,6 +697,13 @@ nxSwapChain nxCreateSwapChain(nxLogicalDevice device, nxSurface surface, nxForma
 	
 	NX_VK_SWAP_CHAIN(swapChain).images = (VkImage*)malloc(NX_VK_SWAP_CHAIN(swapChain).imageCount * sizeof(VkImage));
 	NX_VKCALL(vkGetSwapchainImagesKHR(NX_VK_LOGICAL_DEVICE(device).device, NX_VK_SWAP_CHAIN(swapChain).swapChain, &NX_VK_SWAP_CHAIN(swapChain).imageCount, NX_VK_SWAP_CHAIN(swapChain).images));
+
+	VkSemaphoreCreateInfo semaphoreCreateInfo = { };
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	NX_VKCALL(vkCreateSemaphore(NX_VK_LOGICAL_DEVICE(device).device, &semaphoreCreateInfo, NULL, &NX_VK_SWAP_CHAIN(swapChain).semaphore));
+
+	NX_VKCALL(vkAcquireNextImageKHR(NX_VK_LOGICAL_DEVICE(device).device, NX_VK_SWAP_CHAIN(swapChain).swapChain, UINT64_MAX, NX_VK_SWAP_CHAIN(swapChain).semaphore, VK_NULL_HANDLE, &NX_VK_SWAP_CHAIN(swapChain).nextImageIndex));
 
 	return swapChain;
 }
@@ -739,27 +765,62 @@ void nxGetSwapChainImages(nxSwapChain swapChain, nxImage *images) {
 		for (uint32_t j = 0; j < NX_MAX_IMAGES; j++) {
 			if (gImages[j].used) continue;
 			gImages[j].used = NX_TRUE;
-			images[i] = j;
-			break;			
+			images[i] = j + NX_IMAGE_OFFSET;
+			break;
 		}
 
-		gImages[images[i]].image = swapChainImages[i];
+		NX_VK_IMAGE(images[i]).image = swapChainImages[i];
+		NX_VK_IMAGE(images[i]).device = logicalDevice;
 	}
+}
+
+uint32_t nxGetNextSwapChainImageIndex(nxSwapChain swapChain) {
+	return NX_VK_SWAP_CHAIN(swapChain).nextImageIndex;
+}
+
+void nxPresentSwapChainImage(nxSwapChain swapChain, uint32_t index) {
+	nxLogicalDevice logicalDevice = NX_VK_SWAP_CHAIN(swapChain).device;
+
+	VkSemaphore semaphores[] = { NX_VK_SWAP_CHAIN(swapChain).semaphore };
+
+	VkSwapchainKHR swapChains[] = { NX_VK_SWAP_CHAIN(swapChain).swapChain };
+
+	uint32_t imageIndices[] = { index };
+
+	VkResult result;
+
+	VkPresentInfoKHR presentInfo = { };
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = semaphores;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = swapChains;
+	presentInfo.pImageIndices = imageIndices;
+	presentInfo.pResults = &result;
+
+	NX_VKCALL(vkQueuePresentKHR(NX_VK_LOGICAL_DEVICE(logicalDevice).presentQueue, &presentInfo));
+
+	NX_VKCALL(result);
+
+	NX_VKCALL(vkAcquireNextImageKHR(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_SWAP_CHAIN(swapChain).swapChain, UINT64_MAX, NX_VK_SWAP_CHAIN(swapChain).semaphore, VK_NULL_HANDLE, &NX_VK_SWAP_CHAIN(swapChain).nextImageIndex));
 }
 
 void nxDestroySwapChain(nxSwapChain *swapChain) {
 	nxLogicalDevice logicalDevice = NX_VK_SWAP_CHAIN(*swapChain).device;
 
-	vkDestroySwapchainKHR(NX_VK_LOGICAL_DEVICE(logicalDevice).device, gSwapChains[*swapChain].swapChain, NULL);
-	memset(&gSwapChains[*swapChain], 0, sizeof(vulkanSwapChain));
+	vkDestroySemaphore(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_SWAP_CHAIN(*swapChain).semaphore, NULL);
+
+	vkDestroySwapchainKHR(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_SWAP_CHAIN(*swapChain).swapChain, NULL);
+	free(NX_VK_SWAP_CHAIN(*swapChain).images);
+	memset(&NX_VK_SWAP_CHAIN(*swapChain), 0, sizeof(vulkanSwapChain));
 	*swapChain = NX_INVALID_HANDLE;
 }
 
 void nxDestroyImage(nxImage *image) {
 	nxLogicalDevice logicalDevice = NX_VK_IMAGE(*image).device;
 
-	vkDestroyImage(NX_VK_LOGICAL_DEVICE(logicalDevice).device, gImages[*image].image, NULL);
-	memset(&gImages[*image], 0, sizeof(vulkanImage));
+	vkDestroyImage(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_IMAGE(*image).image, NULL);
+	memset(&NX_VK_IMAGE(*image), 0, sizeof(vulkanImage));
 	*image = NX_INVALID_HANDLE;
 }
 
@@ -768,11 +829,11 @@ nxImageView nxCreateImageView(nxLogicalDevice device, nxImage image, nxImageView
 	for (uint32_t i = 0; i < NX_MAX_IMAGE_VIEWS; i++) {
 		if (gImageViews[i].used) continue;
 		gImageViews[i].used = NX_TRUE;
-		imageView = i;
+		imageView = i + NX_IMAGE_VIEW_OFFSET;
 		break;
 	}
 
-	NX_ASSERT(imageView == NX_INVALID_HANDLE);
+	NX_ASSERT(imageView != NX_INVALID_HANDLE);
 
 	VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	
@@ -801,21 +862,22 @@ nxImageView nxCreateImageView(nxLogicalDevice device, nxImage image, nxImageView
 
 	VkImageViewCreateInfo imageViewCreateInfo = { };
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	imageViewCreateInfo.image = gImages[image].image;
+	imageViewCreateInfo.image = NX_VK_IMAGE(image).image;
 	imageViewCreateInfo.viewType = imageViewType;
 	imageViewCreateInfo.format = vkFormat;
 	imageViewCreateInfo.components = components;
 	imageViewCreateInfo.subresourceRange = subresourceRange;
 
-	NX_VKCALL(vkCreateImageView(NX_VK_LOGICAL_DEVICE(device).device, &imageViewCreateInfo, NULL, &gImageViews[imageView].imageView));
+	NX_VKCALL(vkCreateImageView(NX_VK_LOGICAL_DEVICE(device).device, &imageViewCreateInfo, NULL, &NX_VK_IMAGE_VIEW(imageView).imageView));
+	NX_VK_IMAGE_VIEW(imageView).device = device;
 
 	return imageView;
 }
 
 void nxDestroyImageView(nxImageView *view) {
-	nxLogicalDevice logicalDevice = gImageViews[*view].device;
-	vkDestroyImageView(NX_VK_LOGICAL_DEVICE(logicalDevice).device, gImageViews[*view].imageView, NULL);
-	memset(&gImageViews[*view], 0, sizeof(vulkanImageView));
+	nxLogicalDevice logicalDevice = NX_VK_IMAGE_VIEW(*view).device;
+	vkDestroyImageView(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_IMAGE_VIEW(*view).imageView, NULL);
+	memset(&NX_VK_IMAGE_VIEW(*view), 0, sizeof(vulkanImageView));
 	*view = NX_INVALID_HANDLE;
 }
 
@@ -824,7 +886,7 @@ nxCommandPool nxCreateCommandPool(nxLogicalDevice device, nxCommandPoolType type
 	for (uint32_t i = 0; i < NX_MAX_COMMAND_POOLS; i++) {
 		if (gCommandPools[i].used) continue;
 		gCommandPools[i].used = NX_TRUE;
-		pool = i;
+		pool = i + NX_COMMAND_POOL_OFFSET;
 		break;
 	}
 
@@ -838,26 +900,27 @@ nxCommandPool nxCreateCommandPool(nxLogicalDevice device, nxCommandPoolType type
 		case NX_COMMAND_POOL_TYPE_TRANSFER: commandPoolCreateInfo.queueFamilyIndex = NX_VK_LOGICAL_DEVICE(device).transferQueueFamily; break;
 	}
 
-	NX_VKCALL(vkCreateCommandPool(NX_VK_LOGICAL_DEVICE(device).device, &commandPoolCreateInfo, NULL, &gCommandPools[pool].pool));
+	NX_VKCALL(vkCreateCommandPool(NX_VK_LOGICAL_DEVICE(device).device, &commandPoolCreateInfo, NULL, &NX_VK_COMMAND_POOL(pool).pool));
+	NX_VK_COMMAND_POOL(pool).device = device;
 	return pool;
 }
 
 void nxDestroyCommandPool(nxCommandPool *pool) {
-	nxLogicalDevice device = gCommandPools[*pool].device;
+	nxLogicalDevice device = NX_VK_COMMAND_POOL(*pool).device;
 
-	vkDestroyCommandPool(NX_VK_LOGICAL_DEVICE(device).device, gCommandPools[*pool].pool, NULL);
-	memset(&gCommandPools[*pool], 0, sizeof(vulkanCommandPool));
+	vkDestroyCommandPool(NX_VK_LOGICAL_DEVICE(device).device, NX_VK_COMMAND_POOL(*pool).pool, NULL);
+	memset(&NX_VK_COMMAND_POOL(*pool), 0, sizeof(vulkanCommandPool));
 	*pool = NX_INVALID_HANDLE;
 }
 
 nxCommandBuffer nxAllocateCommandBuffer(nxCommandPool pool) {
-	nxLogicalDevice logicalDevice = gCommandPools[pool].device;
+	nxLogicalDevice logicalDevice = NX_VK_COMMAND_POOL(pool).device;
 
 	nxCommandBuffer buffer = NX_INVALID_HANDLE;
 	for (uint32_t i = 0; i < NX_MAX_COMMAND_BUFFERS; i++) {
 		if (gCommandBuffers[i].used) continue;
 		gCommandBuffers[i].used = NX_TRUE;
-		buffer = i;
+		buffer = i + NX_COMMAND_BUFFER_OFFSET;
 		break;
 	}
 
@@ -866,18 +929,19 @@ nxCommandBuffer nxAllocateCommandBuffer(nxCommandPool pool) {
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { };
 	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	commandBufferAllocateInfo.commandBufferCount = 1;
-	commandBufferAllocateInfo.commandPool = gCommandPools[pool].pool;
+	commandBufferAllocateInfo.commandPool = NX_VK_COMMAND_POOL(pool).pool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
-	NX_VKCALL(vkAllocateCommandBuffers(NX_VK_LOGICAL_DEVICE(logicalDevice).device, &commandBufferAllocateInfo, &gCommandBuffers[buffer].buffer));
+	NX_VKCALL(vkAllocateCommandBuffers(NX_VK_LOGICAL_DEVICE(logicalDevice).device, &commandBufferAllocateInfo, &NX_VK_COMMAND_BUFFER(buffer).buffer));
+	NX_VK_COMMAND_BUFFER(buffer).pool = pool;
 	return buffer;
 }
 
 void nxFreeCommandBuffer(nxCommandBuffer *buffer) {
-	nxCommandPool commandPool = gCommandBuffers[*buffer].pool;
-	nxLogicalDevice logicalDevice = gCommandPools[commandPool].device;
+	nxCommandPool commandPool = NX_VK_COMMAND_BUFFER(*buffer).pool;
+	nxLogicalDevice logicalDevice = NX_VK_COMMAND_POOL(commandPool).device;
 
-	vkFreeCommandBuffers(NX_VK_LOGICAL_DEVICE(logicalDevice).device, gCommandPools[commandPool].pool, 1, &gCommandBuffers[*buffer].buffer);
-	memset(&gCommandBuffers[*buffer], 0, sizeof(vulkanCommandBuffer));
+	vkFreeCommandBuffers(NX_VK_LOGICAL_DEVICE(logicalDevice).device, NX_VK_COMMAND_POOL(commandPool).pool, 1, &NX_VK_COMMAND_BUFFER(*buffer).buffer);
+	memset(&NX_VK_COMMAND_BUFFER(*buffer), 0, sizeof(vulkanCommandBuffer));
 	*buffer = NX_INVALID_HANDLE;
 }

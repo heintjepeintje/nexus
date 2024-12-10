@@ -5,38 +5,15 @@
 #include "Window.h"
 #include "Math.h"
 
-#define NX_PHYSICAL_DEVICE_NAME_MAX_SIZE 256
-
-#define NX_MAX_GRAPHICS_CONTEXTS 16
-#define NX_MAX_PHYSICAL_DEVICES 16
-#define NX_MAX_SURFACES NX_MAX_WINDOWS
-#define NX_MAX_LOGICAL_DEVICES 16
-#define NX_MAX_SWAP_CHAINS 16
-#define NX_MAX_IMAGES 512
-#define NX_MAX_IMAGE_VIEWS 512
-#define NX_MAX_COMMAND_POOLS 16
-#define NX_MAX_COMMAND_BUFFERS 64
-
-#define NX_DEFAULT_OFFSET 1024
-#define NX_GRAPHICS_CONTEXT_OFFSET NX_DEFAULT_OFFSET
-#define NX_PHYSICAL_DEVICE_OFFSET (NX_GRAPHICS_CONTEXT_OFFSET + NX_MAX_GRAPHICS_CONTEXTS)
-#define NX_SURFACE_OFFSET (NX_PHYSICAL_DEVICE_OFFSET + NX_MAX_PHYSICAL_DEVICES)
-#define NX_LOGICAL_DEVIC_OFFSET (NX_SURFACE_OFFSET + NX_MAX_SURFACES)
-#define NX_SWAP_CHAIN_OFFSET (NX_LOGICAL_DEVIC_OFFSET + NX_MAX_LOGICAL_DEVICES)
-#define NX_IMAGE_OFFSET (NX_SWAP_CHAIN_OFFSET + NX_MAX_SWAP_CHAINS)
-#define NX_IMAGE_VIEW_OFFSET (NX_IMAGE_OFFSET + NX_MAX_IMAGES)
-#define NX_COMMAND_POOL_OFFSET (NX_IMAGE_VIEW_OFFSET + NX_MAX_IMAGE_VIEWS)
-#define NX_COMMAND_BUFFER_OFFSET (NX_COMMAND_POOL_OFFSET + NX_MAX_COMMAND_POOLS)
-
 typedef nxHandle nxGraphicsContext;
 typedef nxHandle nxPhysicalDevice;
 typedef nxHandle nxSurface;
 typedef nxHandle nxLogicalDevice;
 typedef nxHandle nxSwapChain;
-typedef nxHandle nxCommandPool;
-typedef nxHandle nxCommandBuffer;
 typedef nxHandle nxImage;
 typedef nxHandle nxImageView;
+typedef nxHandle nxCommandPool;
+typedef nxHandle nxCommandBuffer;
 
 typedef enum {
 	NX_FORMAT_UNKNOWN = 0,
@@ -110,6 +87,11 @@ typedef enum {
 } nxImageViewType;
 
 typedef enum {
+	NX_IMAGE_LAYOUT_UNKNOWN = 0,
+	NX_IMAGE_LAYOUT_PRESENT
+} nxImageLayout;
+
+typedef enum {
 	NX_COMMAND_POOL_TYPE_NONE = 0,
 	NX_COMMAND_POOL_TYPE_GRAPHICS,
 	NX_COMMAND_POOL_TYPE_PRESENT,
@@ -147,6 +129,8 @@ nxSwapChain nxCreateSwapChain(nxLogicalDevice device, nxSurface surface, nxForma
 void nxResizeSwapChainImages(nxSwapChain swapChain, nxVec2u newImageSize);
 uint32_t nxGetSwapChainImageCount(nxSwapChain swapChain);
 void nxGetSwapChainImages(nxSwapChain swapChain, nxImage *images);
+uint32_t nxGetNextSwapChainImageIndex(nxSwapChain swapChain);
+void nxPresentSwapChainImage(nxSwapChain swapChain, uint32_t index);
 void nxDestroySwapChain(nxSwapChain *swapChain);
 
 void nxDestroyImage(nxImage *image);
@@ -159,5 +143,7 @@ void nxDestroyCommandPool(nxCommandPool *pool);
 
 nxCommandBuffer nxAllocateCommandBuffer(nxCommandPool pool);
 void nxFreeCommandBuffer(nxCommandBuffer *buffer);
+
+void nxCmdConvertImageLayout(nxCommandBuffer buffer, nxImage image, nxImageLayout dest);
 
 #endif // __NX_GRAPHICS_H__

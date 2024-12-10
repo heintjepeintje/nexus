@@ -3,8 +3,6 @@
 
 #include "Core.h"
 
-#define NX_MAX_WINDOWS 16
-
 typedef nxHandle nxWindow;
 
 typedef void(*nxWindowCloseCallback)(nxWindow window);

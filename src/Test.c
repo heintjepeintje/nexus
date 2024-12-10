@@ -6,24 +6,32 @@
 
 #include <stdio.h>
 
-static nxWindow gWindow = NX_INVALID_HANDLE;
-static nxGraphicsContext gContext = NX_INVALID_HANDLE;
-static nxPhysicalDevice gPhysicalDevice = NX_INVALID_HANDLE;
-static nxSurface gSurface = NX_INVALID_HANDLE;
+static nxWindow gWindow;
+static nxGraphicsContext gContext;
+static nxPhysicalDevice gPhysicalDevice;
+static nxSurface gSurface;
 static nxSurfaceCapabilities gSurfaceCapabilities = { };
-static nxLogicalDevice gLogicalDevice = NX_INVALID_HANDLE;
-static nxSwapChain gSwapChain = NX_INVALID_HANDLE;
-static nxCommandPool gGraphicsCommandPool = NX_INVALID_HANDLE;
-static nxCommandPool gPresentCommandPool = NX_INVALID_HANDLE;
-static nxCommandPool gTransferCommandPool = NX_INVALID_HANDLE;
-static nxCommandBuffer gGraphicsCommandBuffer = NX_INVALID_HANDLE;
-static nxCommandBuffer gPresentCommandBuffer = NX_INVALID_HANDLE;
-static nxCommandBuffer gTransferCommandBuffer = NX_INVALID_HANDLE;
+static nxLogicalDevice gLogicalDevice;
+static nxSwapChain gSwapChain;
+static nxCommandPool gGraphicsCommandPool;
+static nxCommandPool gPresentCommandPool;
+static nxCommandPool gTransferCommandPool;
+static nxCommandBuffer gGraphicsCommandBuffer;
+static nxCommandBuffer gPresentCommandBuffer;
+static nxCommandBuffer gTransferCommandBuffer;
+static uint32_t gImageCount;
+static nxImage *gImages;
+static nxImageView *gImageViews;
 
 void onResize(nxWindow window, uint32_t width, uint32_t height) {
 	nxVec2u size = { width, height };
 	size = nxClampVec2u(size, gSurfaceCapabilities.minImageSize, gSurfaceCapabilities.maxImageSize);
 	nxResizeSwapChainImages(gSwapChain, size);
+	nxGetSwapChainImages(gSwapChain, gImages);
+	for (uint32_t i = 0; i < gImageCount; i++) {
+		nxDestroyImageView(&gImageViews[i]);
+		gImageViews[i] = nxCreateImageView(gLogicalDevice, gImages[i], NX_IMAGE_VIEW_TYPE_2D, NX_FORMAT_R8G8B8A8_UNORM);
+	}
 }
 
 void init() {
@@ -46,7 +54,7 @@ void init() {
 		nxDestroyPhysicalDevice(&device);
 	}
 
-	char name[NX_PHYSICAL_DEVICE_NAME_MAX_SIZE] = {};
+	char name[NX_NAME_MAX_SIZE] = {};
 	nxGetPhysicalDeviceName(gPhysicalDevice, name);
 	printf("Device: %s\n", name);
 
@@ -82,6 +90,15 @@ void init() {
 	gPresentCommandBuffer = nxAllocateCommandBuffer(gPresentCommandPool);
 	gTransferCommandBuffer = nxAllocateCommandBuffer(gTransferCommandPool);
 
+	gImageCount = nxGetSwapChainImageCount(gSwapChain);
+	gImages = (nxImage*)malloc(gImageCount * sizeof(nxImage));
+	gImageViews = (nxImageView*)malloc(gImageCount * sizeof(nxImageView));
+	nxGetSwapChainImages(gSwapChain, gImages);
+
+	for (uint32_t i = 0; i < gImageCount; i++) {
+		gImageViews[i] = nxCreateImageView(gLogicalDevice, gImages[i], NX_IMAGE_VIEW_TYPE_2D, NX_FORMAT_R8G8B8A8_UNORM);
+	}
+
 	nxShowWindow(gWindow);
 	nxMaximizeWindow(gWindow);
 
@@ -93,10 +110,13 @@ void update() {
 }
 
 void draw() {
+	uint32_t nextImage = nxGetNextSwapChainImageIndex(gSwapChain);
+	nxPresentSwapChainImage(gSwapChain, nextImage);
 	nxUpdateWindow(gWindow);
 }
 
 void shutdown() {
+
 	nxFreeCommandBuffer(&gTransferCommandBuffer);
 	nxFreeCommandBuffer(&gPresentCommandBuffer);
 	nxFreeCommandBuffer(&gGraphicsCommandBuffer);
@@ -104,7 +124,14 @@ void shutdown() {
 	nxDestroyCommandPool(&gTransferCommandPool);
 	nxDestroyCommandPool(&gPresentCommandPool);
 	nxDestroyCommandPool(&gGraphicsCommandPool);
-	
+
+	for (uint32_t i = 0; i < gImageCount; i++) {
+		nxDestroyImageView(&gImageViews[i]);
+	}
+
+	free(gImageViews);
+	free(gImages);
+
 	nxDestroySwapChain(&gSwapChain);
 	nxDestroyLogicalDevice(&gLogicalDevice);
 	nxDestroySurface(&gSurface);
